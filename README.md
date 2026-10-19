@@ -10,4 +10,4 @@ Everything runs on the phone. The feeds are public and allow browser calls, so t
 - Rain, PSI, PM2.5, UV, traffic cams — [data.gov.sg](https://data.gov.sg)
 - Rain radar — weather.gov.sg
 - Map — [OneMap](https://www.onemap.gov.sg) (Singapore Land Authority)
-- Bottle return machines — `data/bcrs.json` (Return Right has no open feed yet)
+- Bottle return machines — `data/bcrs.json`, a snapshot of Return Right locations made by `update-bcrs.py` (their API blocks other sites, so the app ships a copy)

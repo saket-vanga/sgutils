@@ -1,6 +1,6 @@
 // Keeps the app shell (and the bus stop list) on the phone so SG Utils opens instantly.
 // Network first, so a new version shows up the next time it's opened online.
-const CACHE = "sgutils-v1792396782";
+const CACHE = "sgutils-v1792397418";
 const SHELL = ["./", "index.html", "style.css", "app.js", "data.js", "map.js", "vendor/preact-htm.js", "vendor/leaflet.js",
   "vendor/leaflet.css", "vendor/qrcode.js", "manifest.webmanifest", "icons/apple-touch-icon.png", "icons/icon-192.png"];
 const KEEP = ["https://data.busrouter.sg/v1/stops.min.json"];  // big and rarely changes: fall back to the cached copy

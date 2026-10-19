@@ -157,14 +157,15 @@ export async function cameras() {
 
 // ---------------------------------------------------------------- bottle return machines
 
-// data/bcrs.json is a snapshot: [{ name, address, lat, lng, hours }]. Return Right has no open feed yet.
+// data/bcrs.json is a snapshot made by ../update-bcrs.py: { updated, machines: [{ name, address, lat, lng, hours, count }] }.
+// Return Right's own API doesn't allow calls from other sites, so live fill levels stay on their finder.
 export async function bcrs() {
   try {
     const r = await fetch("data/bcrs.json");
-    if (!r.ok) return [];
-    const list = await r.json();
-    return Array.isArray(list) ? list : [];
-  } catch { return []; }
+    if (!r.ok) return { updated: null, machines: [] };
+    const d = await r.json();
+    return Array.isArray(d) ? { updated: null, machines: d } : { updated: d.updated, machines: d.machines || [] };
+  } catch { return { updated: null, machines: [] }; }
 }
 
 // ---------------------------------------------------------------- geo helpers

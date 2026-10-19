@@ -357,28 +357,41 @@ function CamsPanel({ cam, setCam, mapApi, cams }) {
 
 // ---------------------------------------------------------------- bottle return
 
-function BcrsPanel({ pos, list, pick, setPick, mapApi }) {
-  if (!list) return html`<div class="pad"><${Loading} /></div>`;
-  const near = pos ? api.nearest(list, pos, 15) : list.slice(0, 15);
+function BcrsPanel({ pos, data, pick, setPick, mapApi }) {
+  const list = data?.machines || [];
+  const near = useMemo(() => pos ? api.nearest(list.map((m, i) => ({ ...m, i })), pos, 15) : [], [list, pos?.lat, pos?.lng]);
   const sel = pick != null ? list[pick] : null;
+  useEffect(() => { mapApi.current?.pickBcrs(sel); }, [sel]);
+  const open = (m, i) => { setPick(i); mapApi.current?.show([m.lat, m.lng], 17); };
+  if (!data) return html`<div class="pad"><${Loading} /></div>`;
+  const finder = html`<a class="chip" target="_blank" rel="noopener" href="https://returnright.sg/p/find-my-nearest-rvm">Is it full? Check on Return Right <${Icon} name="go" size=${16} /></a>`;
   return html`<div class="pad">
-    <div class="card bcrs-hero" style=${{ "--c": SEC.bcrs.color }}>
-      <span class="wx-emoji">🥤</span>
-      <div class="grow"><div class="eyebrow">Return Right</div>
-        <div class="wx-text">10¢ back for every can and bottle</div>
-        <div class="row-d">Look for the deposit mark. Empty it, don't crush it.</div></div>
-    </div>
-    ${sel && html`<div class="card picked"><div class="row-t">${sel.name}</div><div class="row-d">${sel.address || ""}${sel.hours ? ` · ${sel.hours}` : ""}</div>
-      <a class="chip" target="_blank" rel="noopener" href=${`https://www.google.com/maps/dir/?api=1&destination=${sel.lat},${sel.lng}`}>Directions <${Icon} name="go" size=${16} /></a>
-      <button class="chip ghost" onClick=${() => setPick(null)}>Close</button></div>`}
-    ${list.length ? html`<h4 class="sub">${pos ? "Nearest machines" : "Machines"}</h4>
-      <div class="list">${near.map(m => html`<button class="row" key=${m.name + m.lat} onClick=${() => { setPick(list.indexOf(list.find(x => x.lat === m.lat && x.lng === m.lng))); mapApi.current?.show([m.lat, m.lng], 17); }}>
-        <span class="drop recycle">♻</span><span class="grow"><span class="row-t">${m.name}</span><span class="row-d">${m.address || ""}${m.dist != null ? ` · ${api.fmtDist(m.dist)}` : ""}</span></span><${Icon} name="go" size=${18} /></button>`)}</div>`
-    : html`<div class="card soon">
-        <div class="row-t">Machine map coming soon</div>
-        <p class="row-d">Return Right doesn't share its machine list openly yet, so for now their own finder shows the nearest one, plus whether it's full.</p>
-        <a class="chip solid" style=${{ "--c": SEC.bcrs.color }} target="_blank" rel="noopener" href="https://returnright.sg/p/find-my-nearest-rvm">Find a machine on Return Right <${Icon} name="go" size=${16} /></a>
+    ${sel ? html`<div class="card picked">
+        <div class="stop-head">
+          <button class="icon-btn" onClick=${() => setPick(null)} aria-label="Back"><${Icon} name="back" /></button>
+          <div class="grow"><div class="stop-name">${sel.name}</div>
+            <div class="row-d">${sel.count > 1 ? `${sel.count} machines` : "1 machine"}${pos ? ` · ${api.fmtDist(api.metres(pos, sel))} away` : ""}</div></div>
+        </div>
+        <div class="row-d">${sel.address}</div>
+        ${sel.hours && html`<div class="row-d">🕑 ${sel.hours}</div>`}
+        <a class="chip solid" style=${{ "--c": SEC.bcrs.color }} target="_blank" rel="noopener" href=${`https://www.google.com/maps/dir/?api=1&destination=${sel.lat},${sel.lng}`}>Directions <${Icon} name="go" size=${16} /></a>
+        ${finder}
+      </div>`
+    : html`<div class="card bcrs-hero" style=${{ "--c": SEC.bcrs.color }}>
+        <span class="wx-emoji">🥤</span>
+        <div class="grow"><div class="eyebrow">Return Right</div>
+          <div class="wx-text">10¢ back for every can and bottle</div>
+          <div class="row-d">Look for the deposit mark. Empty it, don't crush it.</div></div>
       </div>`}
+    ${!list.length ? html`<div class="card soon">
+        <div class="row-t">No machine list yet</div>
+        <p class="row-d">Return Right's own finder shows the nearest one, plus whether it's full.</p>${finder}</div>`
+    : html`<h4 class="sub">${pos ? "Nearest machines" : `${list.length.toLocaleString()} machine spots`}</h4>
+      ${pos ? html`<div class="list">${near.map(m => html`<button class="row" key=${m.i} onClick=${() => open(m, m.i)}>
+          <span class="drop recycle">${m.count > 1 ? m.count : "♻"}</span><span class="grow"><span class="row-t">${m.name}</span>
+          <span class="row-d">${api.fmtDist(m.dist)}${m.hours ? ` · ${m.hours}` : ""}</span></span><${Icon} name="go" size=${18} /></button>`)}</div>`
+        : html`<p class="empty-note">Turn on location to see the ones near you — or tap a purple dot on the map.</p>`}
+      <p class="fine">Locations from Return Right${data.updated ? `, as of ${new Date(data.updated).toLocaleDateString("en-SG", { day: "numeric", month: "short", year: "numeric" })}` : ""}. Machines can be full or down for maintenance — check their finder before a big haul.</p>`}
   </div>`;
 }
 
@@ -395,7 +408,7 @@ function Main() {
   const [stops, setStops] = useState(null);
   const [stop, setStopRaw] = useState(null);
   const [cam, setCam] = useState(null);
-  const [bcrsList, setBcrsList] = useState(null);
+  const [bcrsData, setBcrsData] = useState(null);
   const [pick, setPick] = useState(null);
   const [toast, setToast] = useState(null);
   const watch = useRef(null);
@@ -405,7 +418,7 @@ function Main() {
   const setSection = id => {
     setSectionRaw(id); store.set("section", id);
     if (snap === "peek") setSnap("half");
-    if (id !== "bus" && id !== "bcrs") setTimeout(() => mapApi.current?.overview(id), 60);
+    if (id !== "bus" && !(id === "bcrs" && pos)) setTimeout(() => mapApi.current?.overview(id === "bcrs" ? "air" : id), 60);
   };
   const setStop = (code, fly = true) => { setStopRaw(code); mapApi.current?.selectStop(code, fly); if (code && snap === "peek") setSnap("half"); };
 
@@ -418,7 +431,7 @@ function Main() {
     mapApi.current = m;
     m.setSection(section);
     api.busStops().then(s => { setStops(s); m.setStops(s); }).catch(() => say("Bus stops cannot load — check your connection"));
-    api.bcrs().then(l => { setBcrsList(l); m.setBcrs(l); });
+    api.bcrs().then(d => { setBcrsData(d); m.setBcrs(d.machines); });
     setTimeout(() => m.overview(section === "cams" || section === "rain" ? section : "air"), 150);
     locate(true);
     return () => watch.current != null && navigator.geolocation.clearWatch(watch.current);
@@ -454,7 +467,7 @@ function Main() {
     : section === "rain" ? html`<${RainPanel} pos=${pos} mapApi=${mapApi} active />`
     : section === "air" ? html`<${AirPanel} pos=${pos} mapApi=${mapApi} active />`
     : section === "cams" ? html`<${CamsPanel} cam=${cam} setCam=${setCam} mapApi=${mapApi} cams=${cams} />`
-    : html`<${BcrsPanel} pos=${pos} list=${bcrsList} pick=${pick} setPick=${setPick} mapApi=${mapApi} />`;
+    : html`<${BcrsPanel} pos=${pos} data=${bcrsData} pick=${pick} setPick=${setPick} mapApi=${mapApi} />`;
 
   return html`<div class="main" style=${{ "--accent": s.color }}>
     <div class="map" ref=${mapEl} />
@@ -465,7 +478,7 @@ function Main() {
       <button class=${"fab" + (locating ? " busy" : "") + (pos ? " has" : "")} onClick=${() => pos ? mapApi.current?.view(pos, Math.max(16, mapApi.current.map.getZoom())) : locate(false)} aria-label="Show my location">
         <${Icon} name="locate" size=${22} stroke=${2.2} /></button>
     </div>
-    <${Sheet} snap=${snap} setSnap=${setSnap} onHeight=${setSheetH} page=${section + (stop || "") + (cam || "")}
+    <${Sheet} snap=${snap} setSnap=${setSnap} onHeight=${setSheetH} page=${section + (stop || "") + (cam || "") + (pick ?? "")}
       header=${html`<${LineStrip} section=${section} onPick=${setSection} />`}>
       ${panel}
     <//>

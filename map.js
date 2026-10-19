@@ -66,6 +66,7 @@ export function createMap(el, { onStop, onCam, onBcrs, onMove }) {
   const airLayer = L.layerGroup().addTo(groups.air);
   const camLayer = L.layerGroup().addTo(groups.cams);
   const bcrsLayer = L.layerGroup().addTo(groups.bcrs);
+  let pickMarker = null;
 
   map.on("moveend zoomend", () => { drawStops(); onMove?.(map.getCenter(), map.getZoom()); });
 
@@ -156,8 +157,15 @@ export function createMap(el, { onStop, onCam, onBcrs, onMove }) {
     // bottle return
     setBcrs(list) {
       bcrsLayer.clearLayers();
-      list.forEach((m, i) => L.marker([m.lat, m.lng], { icon: div("pin-bcrs", "<span>♻</span>", [26, 26], [13, 13]) })
-        .on("click", () => onBcrs(i)).addTo(bcrsLayer));
+      // ~1,400 spots: canvas dots stay smooth where 1,400 DOM markers wouldn't.
+      const canvas = L.canvas({ padding: 0.3, tolerance: 6 });
+      list.forEach((m, i) => L.circleMarker([m.lat, m.lng], {
+        renderer: canvas, radius: m.count > 1 ? 7 : 5.5, weight: 2, color: "#fff", fillColor: "#9900aa", fillOpacity: 1,
+      }).on("click", () => onBcrs(i)).addTo(bcrsLayer));
+    },
+    pickBcrs(m) {
+      if (pickMarker) bcrsLayer.removeLayer(pickMarker);
+      pickMarker = m ? L.marker([m.lat, m.lng], { icon: div("pin-bcrs", "<span>♻</span>", [32, 32], [16, 16]), interactive: false, zIndexOffset: 500 }).addTo(bcrsLayer) : null;
     },
   };
 }
