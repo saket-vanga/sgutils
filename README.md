@@ -7,6 +7,7 @@ An iPhone web app — open the site in Safari and add it to your Home Screen.
 Everything runs on the phone. The feeds are public and allow browser calls, so the site is plain static files on GitHub Pages:
 
 - Buses — [arrivelah](https://github.com/cheeaun/arrivelah) (LTA DataMall) and [busrouter.sg](https://busrouter.sg) stops
+- MRT/LRT map — `data/rail.json`, trimmed from [railrouter-sg](https://github.com/cheeaun/railrouter-sg) (OpenStreetMap)
 - Rain, PSI, PM2.5, UV, traffic cams — [data.gov.sg](https://data.gov.sg)
 - Rain radar — weather.gov.sg
 - Map — [OneMap](https://www.onemap.gov.sg) (Singapore Land Authority)

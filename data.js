@@ -168,7 +168,23 @@ export async function bcrs() {
   } catch { return { updated: null, machines: [] }; }
 }
 
+// ---------------------------------------------------------------- trains
+
+// data/rail.json: MRT/LRT lines and stations, trimmed from railrouter-sg (OpenStreetMap).
+let railPromise;
+export function rail() {
+  railPromise ||= fetch("data/rail.json").then(r => r.json()).catch(e => { railPromise = null; throw e; });
+  return railPromise;
+}
+
+const CODE_COLORS = { NS: "#d42e12", EW: "#009645", CG: "#009645", NE: "#9900aa", CC: "#fa9e0d", CE: "#fa9e0d", DT: "#005ec4", TE: "#9d5b25" };
+export const codeColor = code => CODE_COLORS[code.replace(/\d.*/, "")] || "#748477";
+export const LINE_NAMES = { NS: "North South", EW: "East West", CG: "East West", NE: "North East", CC: "Circle", CE: "Circle", DT: "Downtown", TE: "Thomson-East Coast",
+  BP: "Bukit Panjang LRT", SE: "Sengkang LRT", SW: "Sengkang LRT", STC: "Sengkang LRT", PE: "Punggol LRT", PW: "Punggol LRT", PTC: "Punggol LRT" };
+
 // ---------------------------------------------------------------- geo helpers
+
+export const gmaps = (lat, lng) => `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 
 export function metres(a, b) {
   const R = 6371e3, rad = Math.PI / 180;

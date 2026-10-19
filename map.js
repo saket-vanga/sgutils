@@ -1,5 +1,5 @@
 // Leaflet map on OneMap tiles (SLA's own basemap). One layer group per section; only the active one is shown.
-import { RADAR_BOUNDS } from "./data.js";
+import { RADAR_BOUNDS, codeColor } from "./data.js";
 
 const L = window.L;
 const SG = [1.3521, 103.8198];
@@ -9,7 +9,7 @@ const tileUrl = () => `https://www.onemap.gov.sg/maps/tiles/${DARK.matches ? "Ni
 
 const div = (cls, html, size, anchor) => L.divIcon({ className: cls, html, iconSize: size, iconAnchor: anchor });
 
-export function createMap(el, { onStop, onCam, onBcrs, onMove }) {
+export function createMap(el, { onStop, onCam, onBcrs, onStation, onMove }) {
   const map = L.map(el, {
     zoomControl: false, minZoom: 10, maxZoom: 19, zoomSnap: 0.5,
     maxBounds: [[0.75, 103.3], [1.75, 104.5]], maxBoundsViscosity: 0.8,
@@ -21,7 +21,7 @@ export function createMap(el, { onStop, onCam, onBcrs, onMove }) {
   }).addTo(map);
   DARK.addEventListener("change", () => tiles.setUrl(tileUrl()));
 
-  const groups = Object.fromEntries(["bus", "rain", "air", "cams", "bcrs"].map(k => [k, L.layerGroup()]));
+  const groups = Object.fromEntries(["bus", "mrt", "rain", "air", "cams", "bcrs"].map(k => [k, L.layerGroup()]));
   let active = null;
   let sheetPx = 0;
   let me = null, meRing = null;
@@ -68,7 +68,13 @@ export function createMap(el, { onStop, onCam, onBcrs, onMove }) {
   const bcrsLayer = L.layerGroup().addTo(groups.bcrs);
   let pickMarker = null;
 
-  map.on("moveend zoomend", () => { drawStops(); onMove?.(map.getCenter(), map.getZoom()); });
+  // ------------------------------------------------ trains
+  const railLayer = L.layerGroup().addTo(groups.mrt);
+  let stationPick = null, railLines = [];
+  const labels = () => el.classList.toggle("show-labels", map.getZoom() >= 13.5);
+  labels();
+
+  map.on("moveend zoomend", () => { drawStops(); labels(); onMove?.(map.getCenter(), map.getZoom()); });
 
   return {
     map, show,
@@ -152,6 +158,39 @@ export function createMap(el, { onStop, onCam, onBcrs, onMove }) {
         L.marker([c.lat, c.lng], { icon: div("pin-cam", `<span><svg viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Zm8 2.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/></svg></span>`, [32, 32], [16, 16]) })
           .on("click", () => onCam(c.id)).addTo(camLayer);
       }
+    },
+
+    // trains
+    setRail(data) {
+      railLayer.clearLayers();
+      railLines = data.lines;
+      const order = l => l.code === "LRT" ? 0 : 1;  // LRT under MRT
+      for (const l of [...data.lines].sort((a, b) => order(a) - order(b))) {
+        for (const path of l.paths) {
+          L.polyline(path, { color: "#fff", weight: l.code === "LRT" ? 6 : 9, opacity: 0.9, interactive: false }).addTo(railLayer);
+          L.polyline(path, { color: l.color, weight: l.code === "LRT" ? 3 : 5.5, opacity: 1, interactive: false }).addTo(railLayer);
+        }
+      }
+      data.stations.forEach((st, i) => {
+        const multi = st.codes.length > 1;
+        L.circleMarker([st.lat, st.lng], {
+          radius: multi ? 7 : st.lrt ? 4 : 5.5, weight: multi ? 3 : 2.5,
+          color: multi ? "#18181a" : codeColor(st.codes[0]), fillColor: "#fff", fillOpacity: 1,
+        }).bindTooltip(st.name, { permanent: true, direction: "right", offset: [8, 0], className: "stn-label" + (st.lrt ? " lrt" : "") })
+          .on("click", () => onStation(i)).addTo(railLayer);
+      });
+    },
+    pickStation(st, fly = true) {
+      if (stationPick) railLayer.removeLayer(stationPick);
+      stationPick = st ? L.marker([st.lat, st.lng], {
+        icon: div("pin-stn", `<span>${st.codes.map(c => `<i style="background:${codeColor(c)}">${c}</i>`).join("")}</span>`, null, [0, 34]),
+        interactive: false, zIndexOffset: 800,
+      }).addTo(railLayer) : null;
+      if (st && fly) show([st.lat, st.lng], Math.max(map.getZoom(), 15));
+    },
+    fitLine(code) {
+      const pts = railLines.filter(l => l.code === code).flatMap(l => l.paths.flat());
+      if (pts.length) map.flyToBounds(L.latLngBounds(pts), { paddingTopLeft: [20, 70], paddingBottomRight: [20, sheetPx + 20], duration: 0.6 });
     },
 
     // bottle return

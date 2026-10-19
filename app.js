@@ -6,10 +6,11 @@ import { createMap, psiBand, uvBand, wxEmoji, rainColor } from "./map.js";
 
 const SECTIONS = [
   { id: "bus", code: "BS1", name: "Buses", color: "#009645" },
-  { id: "rain", code: "WX2", name: "Rain", color: "#005ec4" },
-  { id: "air", code: "HZ3", name: "Haze & UV", color: "#f99d1c" },
-  { id: "cams", code: "CM4", name: "Traffic", color: "#9d5b25" },
-  { id: "bcrs", code: "RR5", name: "Bottles", color: "#9900aa" },
+  { id: "mrt", code: "MR2", name: "Trains", color: "#d42e12" },
+  { id: "rain", code: "WX3", name: "Rain", color: "#005ec4" },
+  { id: "air", code: "HZ4", name: "Haze", color: "#f99d1c" },
+  { id: "cams", code: "CM5", name: "Traffic", color: "#9d5b25" },
+  { id: "bcrs", code: "RR6", name: "Bottles", color: "#9900aa" },
 ];
 const SEC = Object.fromEntries(SECTIONS.map(s => [s.id, s]));
 
@@ -33,12 +34,16 @@ const ICONS = {
   more: "M5 12h.01M12 12h.01M19 12h.01",
   up: "M12 19V5M6 11l6-6 6 6",
   down: "M12 5v14M6 13l6 6 6-6",
+  pin: "M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Zm0-8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z",
   wheelchair: "M10 4.5a1.5 1.5 0 1 0 0 .01ZM10 8v6h6l2 5M14 11h-4M8 11.5a5 5 0 1 0 6.5 6.5",
 };
 function Icon({ name, size = 20, stroke = 2, fill = false }) {
   return html`<svg class="ic" width=${size} height=${size} viewBox="0 0 24 24" fill=${fill ? "currentColor" : "none"} stroke="currentColor"
     stroke-width=${stroke} stroke-linecap="round" stroke-linejoin="round"><path d=${ICONS[name]} /></svg>`;
 }
+
+const GMaps = ({ lat, lng }) => html`<a class="chip gmaps" target="_blank" rel="noopener" href=${api.gmaps(lat, lng)}>
+  <${Icon} name="pin" size=${16} /> Open in Google Maps</a>`;
 
 const sgTime = t => new Date(t).toLocaleTimeString("en-SG", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Singapore" }).replace(" ", "").toLowerCase();
 function ago(t) {
@@ -217,6 +222,7 @@ function BusPanel({ stops, pos, stop, setStop, mapApi, active }) {
         <button class=${"icon-btn star" + (favs.includes(stop) ? " on" : "")} onClick=${() => toggleFav(stop)} aria-label="Favourite"><${Icon} name="star" fill=${favs.includes(stop)} /></button>
       </div>
       <${Board} code=${stop} stops=${stops} mapApi=${mapApi} active=${active} />
+      <div class="actions"><${GMaps} lat=${s.lat} lng=${s.lng} /></div>
     </div>`;
   }
   return html`<div class="pad">
@@ -228,6 +234,57 @@ function BusPanel({ stops, pos, stop, setStop, mapApi, active }) {
       <h4 class="sub">Near you</h4>
       ${pos ? html`<div class="list">${near.map((s, i) => html`<${StopRow} key=${s.code} s=${s} onOpen=${setStop} live=${i < 4} />`)}</div>`
         : html`<p class="empty-note">Turn on location to see stops near you — or zoom in on the map and tap a stop.</p>`}`}
+  </div>`;
+}
+
+// ---------------------------------------------------------------- trains
+
+const Codes = ({ codes, sm }) => html`<span class="codes">${codes.map(c => html`<span key=${c} class=${"code" + (sm ? " sm" : "")} style=${{ "--c": api.codeColor(c) }}>${c}</span>`)}</span>`;
+
+function TrainsPanel({ rail, pos, station, setStation, stops, setStop, mapApi }) {
+  const [q, setQ] = useState("");
+  const list = rail?.stations || [];
+  const withIdx = useMemo(() => list.map((st, i) => ({ ...st, i })), [list]);
+  const near = useMemo(() => pos ? api.nearest(withIdx, pos, 6) : [], [withIdx, pos?.lat, pos?.lng]);
+  const found = useMemo(() => {
+    const t = q.trim().toLowerCase(); if (!t) return [];
+    return withIdx.filter(st => st.name.toLowerCase().includes(t) || st.codes.some(c => c.toLowerCase() === t)).slice(0, 30);
+  }, [q, withIdx]);
+  const sel = station != null ? list[station] : null;
+  const busNear = useMemo(() => sel && stops ? api.nearest(Object.values(stops), sel, 4) : [], [sel, stops]);
+  useEffect(() => { mapApi.current?.pickStation(sel); }, [sel]);
+  if (!rail) return html`<div class="pad"><${Loading} text="Drawing the MRT map…" /></div>`;
+
+  const row = st => html`<button class="row" key=${st.i} onClick=${() => setStation(st.i)}>
+    <${Codes} codes=${st.codes} sm />
+    <span class="grow"><span class="row-t">${st.name}</span>${st.dist != null && html`<span class="row-d">${api.fmtDist(st.dist)}</span>`}</span>
+    <${Icon} name="go" size=${18} /></button>`;
+
+  if (sel) {
+    const lines = [...new Set(sel.codes.map(c => api.LINE_NAMES[c.replace(/\d.*/, "")] || "LRT"))];
+    return html`<div class="pad">
+      <div class="stop-head">
+        <button class="icon-btn" onClick=${() => setStation(null)} aria-label="Back"><${Icon} name="back" /></button>
+        <div class="grow"><div class="stop-name">${sel.name}</div>
+          <div class="row-d">${lines.map(l => /LRT/.test(l) ? l : `${l} Line`).join(" · ")}${pos ? ` · ${api.fmtDist(api.metres(pos, sel))}` : ""}</div></div>
+      </div>
+      <div class="stn-codes"><${Codes} codes=${sel.codes} />${sel.codes.length > 1 && html`<span class="row-d">Interchange</span>`}</div>
+      <div class="actions"><${GMaps} lat=${sel.lat} lng=${sel.lng} /></div>
+      ${busNear.length > 0 && html`<h4 class="sub">Buses outside</h4>
+        <div class="list">${busNear.map(b => html`<${StopRow} key=${b.code} s=${b} onOpen=${setStop} live />`)}</div>`}
+    </div>`;
+  }
+  const lineChips = [["NS", "#d42e12"], ["EW", "#009645"], ["NE", "#9900aa"], ["CC", "#fa9e0d"], ["DT", "#005ec4"], ["TE", "#9d5b25"], ["LRT", "#748477"]];
+  return html`<div class="pad">
+    <label class="search"><${Icon} name="search" size=${18} /><input placeholder="Station name or code, e.g. NE6" value=${q} onInput=${e => setQ(e.target.value)} inputmode="search" enterkeyhint="search" />
+      ${q && html`<button onClick=${() => setQ("")} aria-label="Clear"><${Icon} name="close" size=${16} /></button>`}</label>
+    ${q ? html`<div class="list" style=${{ marginTop: "12px" }}>${found.length ? found.map(row) : html`<p class="empty-note">No station like that leh.</p>`}</div>`
+    : html`
+      <div class="line-chips">${lineChips.map(([c, col]) => html`<button key=${c} class="code" style=${{ "--c": col }} onClick=${() => mapApi.current?.fitLine(c)}>${c === "LRT" ? "LRT" : api.LINE_NAMES[c]}</button>`)}</div>
+      <h4 class="sub">Nearest stations</h4>
+      ${pos ? html`<div class="list">${near.map(row)}</div>`
+        : html`<p class="empty-note">Turn on location to see stations near you — or tap a station on the map.</p>`}
+      <p class="fine">Tap a line to see the whole thing. Map from OpenStreetMap via railrouter-sg.</p>`}
   </div>`;
 }
 
@@ -344,6 +401,7 @@ function CamsPanel({ cam, setCam, mapApi, cams }) {
       <button class="icon-btn" onClick=${reload} aria-label="Refresh"><${Icon} name="refresh" /></button>
     </div>
     <img class="cam-big" src=${open.img} alt=${open.name} />
+    <div class="actions"><${GMaps} lat=${open.lat} lng=${open.lng} /></div>
     <div class="cam-strip">${data.filter(c => c.group === open.group && c.id !== open.id).map(c => html`<button key=${c.id} class="cam-thumb" onClick=${() => setCam(c.id)}><img src=${c.img} alt="" loading="lazy" /><span>${c.name}</span></button>`)}</div>
   </div>`;
   const groups = ["Woodlands", "Tuas", "Sentosa", "Other"].filter(g => data.some(c => c.group === g));
@@ -375,6 +433,7 @@ function BcrsPanel({ pos, data, pick, setPick, mapApi }) {
         <div class="row-d">${sel.address}</div>
         ${sel.hours && html`<div class="row-d">🕑 ${sel.hours}</div>`}
         <a class="chip solid" style=${{ "--c": SEC.bcrs.color }} target="_blank" rel="noopener" href=${`https://www.google.com/maps/dir/?api=1&destination=${sel.lat},${sel.lng}`}>Directions <${Icon} name="go" size=${16} /></a>
+        <${GMaps} lat=${sel.lat} lng=${sel.lng} />
         ${finder}
       </div>`
     : html`<div class="card bcrs-hero" style=${{ "--c": SEC.bcrs.color }}>
@@ -410,6 +469,8 @@ function Main() {
   const [cam, setCam] = useState(null);
   const [bcrsData, setBcrsData] = useState(null);
   const [pick, setPick] = useState(null);
+  const [rail, setRail] = useState(null);
+  const [station, setStation] = useState(null);
   const [toast, setToast] = useState(null);
   const watch = useRef(null);
   const cams = usePoll(api.cameras, 60e3);
@@ -418,7 +479,8 @@ function Main() {
   const setSection = id => {
     setSectionRaw(id); store.set("section", id);
     if (snap === "peek") setSnap("half");
-    if (id !== "bus" && !(id === "bcrs" && pos)) setTimeout(() => mapApi.current?.overview(id === "bcrs" ? "air" : id), 60);
+    if (id === "mrt") setTimeout(() => pos ? mapApi.current?.view(pos, 14) : mapApi.current?.overview("air"), 60);
+    else if (id !== "bus" && !(id === "bcrs" && pos)) setTimeout(() => mapApi.current?.overview(id === "bcrs" ? "air" : id), 60);
   };
   const setStop = (code, fly = true) => { setStopRaw(code); mapApi.current?.selectStop(code, fly); if (code && snap === "peek") setSnap("half"); };
 
@@ -427,12 +489,14 @@ function Main() {
       onStop: code => { setSectionRaw("bus"); setStop(code); },
       onCam: id => { setCam(id); setSnap(s => s === "peek" ? "half" : s); },
       onBcrs: i => { setPick(i); setSnap(s => s === "peek" ? "half" : s); },
+      onStation: i => { setStation(i); setSnap(s => s === "peek" ? "half" : s); },
     });
     mapApi.current = m;
     m.setSection(section);
     api.busStops().then(s => { setStops(s); m.setStops(s); }).catch(() => say("Bus stops cannot load — check your connection"));
     api.bcrs().then(d => { setBcrsData(d); m.setBcrs(d.machines); });
-    setTimeout(() => m.overview(section === "cams" || section === "rain" ? section : "air"), 150);
+    api.rail().then(r => { setRail(r); m.setRail(r); }).catch(() => {});
+    setTimeout(() => m.overview(section === "cams" || section === "rain" ? section : "air"), 150);  // trains/bus/bottles: whole island until we know where you are
     locate(true);
     return () => watch.current != null && navigator.geolocation.clearWatch(watch.current);
   }, []);
@@ -464,6 +528,8 @@ function Main() {
 
   const s = SEC[section];
   const panel = section === "bus" ? html`<${BusPanel} stops=${stops} pos=${pos} stop=${stop} setStop=${setStop} mapApi=${mapApi} active=${section === "bus"} />`
+    : section === "mrt" ? html`<${TrainsPanel} rail=${rail} pos=${pos} station=${station} setStation=${setStation} stops=${stops}
+        setStop=${code => { setSectionRaw("bus"); store.set("section", "bus"); setStop(code); }} mapApi=${mapApi} />`
     : section === "rain" ? html`<${RainPanel} pos=${pos} mapApi=${mapApi} active />`
     : section === "air" ? html`<${AirPanel} pos=${pos} mapApi=${mapApi} active />`
     : section === "cams" ? html`<${CamsPanel} cam=${cam} setCam=${setCam} mapApi=${mapApi} cams=${cams} />`
@@ -478,7 +544,7 @@ function Main() {
       <button class=${"fab" + (locating ? " busy" : "") + (pos ? " has" : "")} onClick=${() => pos ? mapApi.current?.view(pos, Math.max(16, mapApi.current.map.getZoom())) : locate(false)} aria-label="Show my location">
         <${Icon} name="locate" size=${22} stroke=${2.2} /></button>
     </div>
-    <${Sheet} snap=${snap} setSnap=${setSnap} onHeight=${setSheetH} page=${section + (stop || "") + (cam || "") + (pick ?? "")}
+    <${Sheet} snap=${snap} setSnap=${setSnap} onHeight=${setSheetH} page=${section + (stop || "") + (cam || "") + (pick ?? "") + (station ?? "")}
       header=${html`<${LineStrip} section=${section} onPick=${setSection} />`}>
       ${panel}
     <//>
@@ -519,7 +585,7 @@ function InstallHero() {
   return html`<div class="install-hero">
     <img class="app-icon" src="icons/apple-touch-icon.png" alt="" />
     <${Wordmark} big />
-    <p>Buses, rain, haze, checkpoint jams and bottle machines.<br />All on one map — no need to open five apps.</p>
+    <p>Buses, trains, rain, haze, checkpoint jams and bottle machines.<br />All on one map — no need to open six apps.</p>
     <div class="hero-strip">${SECTIONS.map((s, i) => html`<span key=${s.id} style=${{ "--c": s.color, "--d": `${i * 80}ms` }}><i>${s.code}</i>${s.name}</span>`)}</div>
   </div>`;
 }
